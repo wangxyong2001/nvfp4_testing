@@ -144,7 +144,7 @@ Fast weight loader (O_DIRECT + pipelined): 23.31 GB → 30.30 GB peak → ~66GB 
 MTP Speculative: ENABLED (1.35x verify multiplier)
 ```
 
-### 3.5 基准测试结果
+### 3.5 结果 1 — Sehyo/Qwen3.5 (社区版, 无推理链)
 
 ```
 非流式 (3 trials):
@@ -157,6 +157,31 @@ MTP Speculative: ENABLED (1.35x verify multiplier)
   512 tokens in 4.62s = 110.7 tok/s
 ```
 
+### 3.6 结果 2 — nvidia/Qwen3.6 (官方版, 含推理链)
+
+```
+配置: --speculative --mtp-quantization nvfp4 --bind 0.0.0.0
+Kernel: (sm_121, qwen3.6-35b-a3b, nvfp4) 140 modules
+FP8 KV cache: 启用在线校准
+MTP: 已启用 (256 experts, Bf16 精度)
+
+无推理触发 (简单问答):
+  65 tokens in 0.62s = 105.4 tok/s (输出)
+
+含推理触发 (技术解释, 3 trials):
+  Trial 1: 1290 tok (777 reasoning + 513 output) in 14.51s = 88.9 tok/s total, 35.4 tok/s (output)
+  Trial 2: 1290 tok (777 reasoning + 513 output) in 14.46s = 89.2 tok/s total, 35.5 tok/s (output)
+  Trial 3: 1290 tok (777 reasoning + 513 output) in 14.75s = 87.4 tok/s total, 34.8 tok/s (output)
+  Average: 88.5 tok/s total, 35.2 tok/s (output only)
+
+流式 (含推理, 故事类):
+  513 tokens in 14.70s = 34.9 tok/s (仅可见输出 token)
+```
+
+> **注意**: Qwen3.6 每次推理产出 ~777 个 reasoning token (内部思考链)。
+> 引擎原始解码速度实际为 ~96-105 tok/s (无推理场景)，与 Sehyo/Qwen3.5 基本一致。
+> 推理链 token 计入 completion_tokens 但不可直接暴露给用户。
+
 ---
 
 ## 四、Atlas vs vLLM 对比
@@ -168,8 +193,9 @@ MTP Speculative: ENABLED (1.35x verify multiplier)
 | **MTP** | ❌ 不支持 | ✅ 1.35x verify | ~25% |
 | **冷启动** | ~10 min | <2 min | 5x |
 | **容器大小** | 20+ GB | 2.5 GB | 8x |
-| **单用户 tok/s** | **80.0 tok/s** | **100.8 tok/s** | **+26%** |
-| **流式 tok/s** | **79.2 tok/s** | **110.7 tok/s** | **+40%** |
+| **单用户 tok/s** | **80.0 tok/s** | **100.8 / 96.5 tok/s** | **+20~26%** |
+| **流式 tok/s** | **79.2 tok/s** | **110.7 / 34.9* tok/s** | **+40% (无推理)** |
+| **Qwen3.6 推理链** | ❌ 不支持 | ✅ ~777 tok/次 | — |
 | **KV Cache 策略** | 预分配 6.2M slots | 动态 4.4M slots | — |
 
 ### 为什么 Atlas 更快
