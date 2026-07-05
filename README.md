@@ -8,11 +8,13 @@
 |---|---|---|---|---|
 | vLLM (Marlin 模拟) | nvidia/Qwen3.6-35B-A3B-NVFP4 | **80.0 tok/s** | 79.2 tok/s | vLLM baseline |
 | Atlas (原生 NVFP4) | nvidia/Qwen3.6-35B-A3B-NVFP4 | **96.5 tok/s** | 34.9 tok/s* | 含 ~777 reasoning tok |
+| Atlas (原生 NVFP4) | nvidia/Qwen3.6-35B-A3B-NVFP4 | **104.4 tok/s** | **105.2 tok/s** | 🆕 禁用 reasoning |
 | Atlas (原生 NVFP4) | Sehyo/Qwen3.5-35B-A3B-NVFP4 | **100.8 tok/s** | **110.7 tok/s** | 无推理链，纯输出 |
 
 *\*流式仅统计可见输出 token，推理链阶段不产出文本*
 
 **Atlas 在 DGX Spark 上突破 100 tok/s 目标，相比 vLLM 提升 +20~40%。**
+**Qwen3.6 reasoning 可通过 system prompt 抑制，恢复纯输出速度 105 tok/s。**
 
 ## 目录结构
 

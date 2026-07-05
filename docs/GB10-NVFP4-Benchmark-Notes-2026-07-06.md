@@ -182,6 +182,37 @@ MTP: 已启用 (256 experts, Bf16 精度)
 > 引擎原始解码速度实际为 ~96-105 tok/s (无推理场景)，与 Sehyo/Qwen3.5 基本一致。
 > 推理链 token 计入 completion_tokens 但不可直接暴露给用户。
 
+### 3.7 结果 3 — nvidia/Qwen3.6 + 禁用推理链
+
+**发现**: Qwen3.6 的推理链可以通过 system prompt 抑制，恢复纯输出速度。
+
+**方法**: chat API system prompt
+```python
+{"role": "system", "content": "Answer concisely without thinking step by step. Never use <think> tags."}
+```
+
+**结果**:
+```
+流式 (3 trials, 无 reasoning):
+  Stream: 512 tok in 4.84s = 105.7 tok/s | TTFT=147ms
+  Stream: 512 tok in 4.86s = 105.3 tok/s | TTFT=130ms
+  Stream: 512 tok in 4.84s = 105.7 tok/s | TTFT=130ms
+  Average: 105.2 tok/s
+
+非流式 (参考): 512 tok in 4.90s = 104.4 tok/s
+```
+
+**关键数据点**:
+
+| 模式 | 流式 tok/s | TTFT | Reasoning tokens |
+|---|---|---|---|
+| 默认 (含推理) | 35.2 tok/s* | 63-70ms | ~780/次 |
+| 禁用推理 (system prompt) | **105.2 tok/s** | 130-147ms | 0 |
+
+*\*推理链阶段不产出可见文本，仅计数可见输出 token*
+
+**结论**: `--disable-thinking` server flag 对 Qwen3.6 无效（模型本身生成 `<think>` token），但通过 chat API system prompt 可以完全抑制推理链，恢复与 Sehyo/Qwen3.5 一致的纯输出速度 (~105 tok/s)。
+
 ---
 
 ## 四、Atlas vs vLLM 对比
@@ -193,9 +224,9 @@ MTP: 已启用 (256 experts, Bf16 精度)
 | **MTP** | ❌ 不支持 | ✅ 1.35x verify | ~25% |
 | **冷启动** | ~10 min | <2 min | 5x |
 | **容器大小** | 20+ GB | 2.5 GB | 8x |
-| **单用户 tok/s** | **80.0 tok/s** | **100.8 / 96.5 tok/s** | **+20~26%** |
-| **流式 tok/s** | **79.2 tok/s** | **110.7 / 34.9* tok/s** | **+40% (无推理)** |
-| **Qwen3.6 推理链** | ❌ 不支持 | ✅ ~777 tok/次 | — |
+| **单用户 tok/s** | **80.0 tok/s** | **100.8 / 96.5 / 104.4 tok/s** | **+20~31%** |
+| **流式 tok/s** | **79.2 tok/s** | **110.7 / 105.2 / 34.9* tok/s** | **+33~40% (无推理)** |
+| **Qwen3.6 推理链** | ❌ 不支持 | ✅ ~777 tok/次 (可抑制) | — |
 | **KV Cache 策略** | 预分配 6.2M slots | 动态 4.4M slots | — |
 
 ### 为什么 Atlas 更快
