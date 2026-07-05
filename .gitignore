@@ -1,0 +1,26 @@
+# Large binaries
+*.tar
+*.tar.gz
+*.safetensors
+
+# Docker layers cache
+atlas/layers/
+atlas/atlas-gb10.tar
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.venv/
+venv/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
