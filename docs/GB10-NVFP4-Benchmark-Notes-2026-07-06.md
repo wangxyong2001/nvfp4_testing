@@ -272,9 +272,11 @@ GPU: GB10, 117GB free at load
 | **Atlas** | nvidia/Qwen3.6-35B-A3B | NVFP4 (native) | **104.4 tok/s** | **105.2 tok/s** | 130ms | <2 min |
 | **Atlas** | nvidia/Qwen3.6-35B-A3B | NVFP4 (native) | 96.5 tok/s | 34.9 tok/s* | 63ms | <2 min |
 | **vLLM** (Marlin) | nvidia/Qwen3.6-35B-A3B | NVFP4 (modelopt) | 80.0 tok/s | 79.2 tok/s | 41ms | ~10 min |
-| **llama.cpp** | Qwen3.6-35B-A3B | Q4_K_P (GGUF) | 65.9 tok/s | 65.1 tok/s | — | ~2.5s |
+| **llama.cpp** (最佳) | Qwen3.6-35B-A3B | Q4_K_P (GGUF) | 65.9 tok/s | 65.1 tok/s | — | ~2.5s |
+| **llama.cpp** (spark_launcher) | Qwen3.6-35B-A3B | Q4_K_P (GGUF) | **54.0 tok/s**^② | — | — | ~5s |
 
 *\*含 reasoning 时仅统计可见输出 token*
+*\② spark_launcher_7.sh 实测 (ctx=65K, q8_0 cache, no-mmap, flash-attn)*
 
 ### 为什么 Atlas 更快
 

@@ -10,9 +10,11 @@
 | Atlas (原生 NVFP4) | nvidia/Qwen3.6-35B-A3B-NVFP4 | **96.5 tok/s** | 34.9 tok/s* | 含 ~777 reasoning tok |
 | Atlas (原生 NVFP4) | nvidia/Qwen3.6-35B-A3B-NVFP4 | **104.4 tok/s** | **105.2 tok/s** | 🆕 禁用 reasoning |
 | Atlas (原生 NVFP4) | Sehyo/Qwen3.5-35B-A3B-NVFP4 | **100.8 tok/s** | **110.7 tok/s** | 无推理链，纯输出 |
-| **llama.cpp** | Qwen3.6-35B-A3B (Q4_K_P) | **65.9 tok/s** | 65.1 tok/s | GGUF 通用量化 |
+| **llama.cpp** (最佳) | Qwen3.6-35B-A3B (Q4_K_P) | **65.9 tok/s** | 65.1 tok/s | GGUF 通用量化 |
+| **llama.cpp** (spark_launcher) | Qwen3.6-35B-A3B (Q4_K_P) | **54.0 tok/s**^② | — | spark_launcher_7.sh 配置 |
 
 *\*流式仅统计可见输出 token，推理链阶段不产出文本*
+*\② spark_launcher 参数: ctx=65K, q8_0 cache, no-mmap, flash-attn*
 
 **Atlas 在 DGX Spark 上突破 100 tok/s 目标，相比 vLLM 提升 +20~40%。**
 **Qwen3.6 reasoning 可通过 system prompt 抑制，恢复纯输出速度 105 tok/s。**
