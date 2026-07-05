@@ -215,6 +215,41 @@ MTP: 已启用 (256 experts, Bf16 精度)
 
 ---
 
+### 3.8 结果 4 — nvidia/Qwen3.6 + llama.cpp (Q4_K_P GGUF)
+
+**模型**: `Qwen3.6-35B-A3B-Uncensored-HauhauCS-Aggressive-Q4_K_P.gguf` (22GB, Q4_K_P)  
+**引擎**: llama.cpp v9728 (fabde3bf5)  
+**后端**: CUDA (sm_121 Blackwell) — `BLACKWELL_NATIVE_FP4 = 1`  
+**加载**: `--n-gpu-layers 99 --mlock --ctx-size 32768`
+
+```
+启动时间: 2.5s (GGUF cold start)
+GPU: GB10, 117GB free at load
+
+非流式 (含 reasoning, 3 trials):
+  Trial 1: 512 tok in 8.08s = 63.4 tok/s
+  Trial 2: 512 tok in 7.99s = 64.1 tok/s
+  Trial 3: 512 tok in 7.75s = 66.1 tok/s
+  Average: 64.5 tok/s
+
+非流式 (禁用 reasoning, 3 trials):
+  Trial 1: 512 tok in 7.76s = 66.0 tok/s
+  Trial 2: 512 tok in 7.76s = 66.0 tok/s
+  Trial 3: 512 tok in 7.78s = 65.8 tok/s
+  Average: 65.9 tok/s
+
+流式 (禁用 reasoning, 3 trials):
+  Trial 1: 512 tok in 7.99s = 64.1 tok/s
+  Trial 2: 512 tok in 7.80s = 65.6 tok/s
+  Trial 3: 512 tok in 7.80s = 65.6 tok/s
+  Average: 65.1 tok/s
+```
+
+> **llama.cpp 速度 65 tok/s 低于 vLLM (80) 和 Atlas (100+) 的原因**:
+> 1. GGUF Q4_K_P 是通用 uint4 量化，没有 Blackwell 原生 FP4 kernel 优化
+> 2. llama.cpp 的 CUDA backend 没有针对 MoE 架构做特别优化
+> 3. 没有 MTP speculative decoding 等高级加速技术
+
 ## 四、Atlas vs vLLM 对比
 
 | 维度 | vLLM | Atlas | 差距 |
@@ -224,10 +259,22 @@ MTP: 已启用 (256 experts, Bf16 精度)
 | **MTP** | ❌ 不支持 | ✅ 1.35x verify | ~25% |
 | **冷启动** | ~10 min | <2 min | 5x |
 | **容器大小** | 20+ GB | 2.5 GB | 8x |
-| **单用户 tok/s** | **80.0 tok/s** | **100.8 / 96.5 / 104.4 tok/s** | **+20~31%** |
-| **流式 tok/s** | **79.2 tok/s** | **110.7 / 105.2 / 34.9* tok/s** | **+33~40% (无推理)** |
-| **Qwen3.6 推理链** | ❌ 不支持 | ✅ ~777 tok/次 (可抑制) | — |
-| **KV Cache 策略** | 预分配 6.2M slots | 动态 4.4M slots | — |
+| **单用户 tok/s** | **80.0 tok/s** | **100.8 / 104.4 / 65.9 tok/s** | **+20~31%** |
+| **流式 tok/s** | **79.2 tok/s** | **110.7 / 105.2 / 65.1 / 34.9* tok/s** | **+33~40% (无推理)** |
+| **Qwen3.6 推理链** | ❌ 不支持 | ✅ Atlas ~777 tok/次 (可抑制) | — |
+| **KV Cache 策略** | 预分配 6.2M slots | 动态 4.4M slots (Atlas) | — |
+
+### 全引擎完整数据
+
+| 引擎 | 模型 | 量化格式 | 非流式 | 流式 | TTFT | 冷启动 |
+|---|---|---|---|---|---|---|
+| **Atlas** | Sehyo/Qwen3.5-35B-A3B | NVFP4 (native) | **100.8 tok/s** | **110.7 tok/s** | — | <2 min |
+| **Atlas** | nvidia/Qwen3.6-35B-A3B | NVFP4 (native) | **104.4 tok/s** | **105.2 tok/s** | 130ms | <2 min |
+| **Atlas** | nvidia/Qwen3.6-35B-A3B | NVFP4 (native) | 96.5 tok/s | 34.9 tok/s* | 63ms | <2 min |
+| **vLLM** (Marlin) | nvidia/Qwen3.6-35B-A3B | NVFP4 (modelopt) | 80.0 tok/s | 79.2 tok/s | 41ms | ~10 min |
+| **llama.cpp** | Qwen3.6-35B-A3B | Q4_K_P (GGUF) | 65.9 tok/s | 65.1 tok/s | — | ~2.5s |
+
+*\*含 reasoning 时仅统计可见输出 token*
 
 ### 为什么 Atlas 更快
 
