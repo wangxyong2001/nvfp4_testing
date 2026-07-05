@@ -307,7 +307,135 @@ GPU: GB10, 117GB free at load
 
 ---
 
-## 六、测试脚本位置
+## 六、复现指南（启动参数 & 测试方法）
+
+### 6.1 Atlas + Sehyo/Qwen3.5 或 nvidia/Qwen3.6 (NVFP4)
+
+**容器启动**:
+```bash
+# 镜像: avarok/atlas-gb10:latest
+docker run --gpus all --ipc=host -p 8888:8888 \
+  --name atlas-serving \
+  -v /path/to/model:/model \
+  avarok/atlas-gb10:latest \
+  serve /model \
+  --speculative --mtp-quantization nvfp4 \
+  --bind 0.0.0.0
+```
+
+**禁用推理链 (仅 Qwen3.6)**:
+```bash
+# 通过 system prompt 抑制，server flag --disable-thinking 无效
+# chat API 请求体:
+{
+  "messages": [
+    {"role": "system", "content": "Answer concisely without thinking step by step. Never use <think> tags."},
+    {"role": "user", "content": "Your prompt here"}
+  ]
+}
+```
+
+**测速**:
+```bash
+# 非流式: POST /v1/completions 或 /v1/chat/completions
+# 参数: max_tokens=512, temperature=0.0
+# 流式: stream=true, 逐 token 计数
+```
+
+**结果**:
+| 模型 | 推理链 | 流式 tok/s |
+|---|---|---|
+| Sehyo/Qwen3.5 | 无 (默认) | **110.7** |
+| nvidia/Qwen3.6 | 默认 (含 reasoning) | 34.9 |
+| nvidia/Qwen3.6 | system prompt 抑制 | **105.2** |
+
+---
+
+### 6.2 vLLM + nvidia/Qwen3.6 (NVFP4, Marlin 模拟)
+
+**容器启动**:
+```bash
+# 镜像: vllm/vllm-openai:nightly-aarch64
+docker run -d --gpus all --name qwen-serving -p 8000:8000 \
+  -v /path/to/nvidia_qwen3.6:/model \
+  vllm/vllm-openai:nightly-aarch64 \
+  /model --host 0.0.0.0 --port 8000 --tensor-parallel-size 1 \
+  --gpu-memory-utilization 0.4 --max-model-len 32768 \
+  --max-num-batched-tokens 8192 \
+  --kv-cache-dtype fp8 --dtype auto \
+  --load-format fastsafetensors \
+  --served-model-name qwen3.6
+```
+
+**关键参数说明**:
+| 参数 | 值 | 作用 |
+|---|---|---|
+| `gpu-memory-utilization` | 0.4 | 限制显存占用，避免 OOM |
+| `max-model-len` | 32768 | 上下文长度 |
+| `max-num-batched-tokens` | 8192 | 单次 batch 最大 token 数 |
+| `kv-cache-dtype` | fp8 | KV cache 精度 |
+
+**测速**: 使用 `/home/nvidia/vLLM/benchmark_prefill_decode.py` 或 `benchmark_serving_curve.py`
+
+**结果**:
+| 模式 | tok/s |
+|---|---|
+| 非流式 | **80.0** |
+| 流式 | **79.2** |
+
+---
+
+### 6.3 llama.cpp + Qwen3.6 Q4_K_P (GGUF)
+
+**最佳性能参数** (65 tok/s):
+```bash
+/home/nvidia/llama/llama.cpp/build/bin/llama-server \
+  --model /path/to/Qwen3.6-35B-A3B-Q4_K_P.gguf \
+  --host 0.0.0.0 --port 8081 \
+  --ctx-size 32768 \
+  --batch-size 512 --ubatch-size 512 \
+  --n-gpu-layers 99 \
+  --mlock
+```
+
+**spark_launcher_7.sh 参数** (54 t/s):
+```bash
+/home/nvidia/llama/llama.cpp/build/bin/llama-server \
+  --model /path/to/Qwen3.6-35B-A3B-Q4_K_P.gguf \
+  --host 0.0.0.0 --port 8081 \
+  --ctx-size 65536 \
+  --batch-size 2048 --ubatch-size 512 \
+  --n-gpu-layers 999 \
+  --threads 10 --threads-batch 10 \
+  --parallel 1 --no-mmap \
+  --flash-attn on \
+  --cache-type-k q8_0 --cache-type-v q8_0
+```
+
+> **注意**: `--no-mmap` + `cache-type q8_0` + ctx 65K 会大幅降低速度 (18 tok/s)。
+> spark_launcher 中的 "54 t/s" 是在不同负载下的实测值，单用户简单 prompt 可达 **65 tok/s**。
+
+**测速**: 使用 `/v1/completions` API，prompt 约 10-20 tokens, max_tokens=512
+
+**结果**:
+| 配置 | 非流式 | 流式 |
+|---|---|---|
+| 最佳参数 (ctx=32K, mlock) | **65.9** | **65.1** |
+| spark_launcher 参数 (ctx=65K, no-mmap) | 18.2 | 35.8 |
+
+---
+
+### 6.4 测试方法统一说明
+
+所有测速采用以下统一方法:
+1. **Prompt**: `"Explain how transformer attention mechanisms work in large language models."` (~15 tokens)
+2. **Output**: max_tokens=512, temperature=0.0
+3. **非流式**: 3 次取平均，记录 `completion_tokens / elapsed`
+4. **流式**: 逐 token 计数，3 次取平均，同时记录 TTFT
+5. **硬件**: DGX Spark GB10 (sm_121), 128G 统一内存
+6. **容器/引擎**: 均使用 localhost 网络，排除网络延迟
+
+### 6.5 脚本位置
 
 | 文件 | 用途 |
 |---|---|
@@ -317,6 +445,7 @@ GPU: GB10, 117GB free at load
 | `/home/nvidia/vLLM/atlas/layers/` | Atlas 容器各层缓存 |
 | `/home/nvidia/vLLM/benchmark_serving_curve.py` | vLLM serving curve 测试 |
 | `/home/nvidia/vLLM/benchmark_prefill_decode.py` | vLLM prefill/decode 拆分测试 |
+| `/home/nvidia/llama/spark_launcher_7.sh` | llama.cpp 多模型启动器 (含 Qwen3.6) |
 
 ---
 
